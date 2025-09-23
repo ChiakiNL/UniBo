@@ -1,1 +1,9 @@
-/96342BigData/.Rproj.user
+
+# R / RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*/.Rproj.user/
+*_files/
+*_cache/
