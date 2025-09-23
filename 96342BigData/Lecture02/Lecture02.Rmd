@@ -1,0 +1,100 @@
+---
+title: "Lecture02"
+author: "chiakiNishihara"
+date: "2025-09-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## ワーキングディレクトリを設定
+```{r, eval=FALSE}
+setwd("C:/Users/YourName/YourFolder")
+```
+
+## 現在のディレクトリを確認
+```{r, eval=FALSE}
+getwd()
+```
+
+## CSVファイル読み込み
+```{r, eval=FALSE}
+data <- read.csv("yourfile.csv")
+```
+
+## データの確認
+```{r, eval=FALSE}
+head(data)      # 最初の6行
+str(data)       # データ構造
+summary(data)   # 基本統計量
+```
+
+## パッケージのインストール（初回のみ）
+```{r, eval=FALSE}
+install.packages("tidyverse")
+```
+
+## 読み込み
+```{r, eval=FALSE}
+library(tidyverse)
+```
+
+## 列の選択
+```{r, eval=FALSE}
+data %>% select(column1, column2)
+```
+
+## 行のフィルタリング
+```{r, eval=FALSE}
+data %>% filter(column1 > 100)
+```
+
+## 新しい変数を作成
+```{r, eval=FALSE}
+data %>% mutate(new_col = column1 / column2)
+```
+
+## 要約統計量
+```{r, eval=FALSE}
+data %>% summarise(mean_val = mean(column1, na.rm = TRUE))
+```
+
+## グループ別集計
+```{r, eval=FALSE}
+data %>% group_by(group_col) %>%
+  summarise(avg = mean(column1))
+```
+
+## %>% で複数の操作をつなげる
+```{r, eval=FALSE}
+data %>%
+  filter(year >= 2000) %>%
+  mutate(ratio = population / population[1])
+
+library(ggplot2)
+```
+
+## 折れ線グラフ
+```{r, eval=FALSE}
+ggplot(data, aes(x = year, y = population)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Population over Time", x = "Year", y = "Population") +
+  theme_minimal()
+```
+
+## 便利な関数
+```{r, eval=FALSE}
+round(x, 2)          # 小数点2桁
+na.omit(data)        # 欠損値を削除
+unique(data$column)  # 重複なしの値一覧
+```
+
+## コーディング習慣（ベストプラクティス）
+- 変数名は小文字＋アンダースコア（例: `world_population`）  
+- コメントは `#` で説明を書く  
+- 長い処理は改行して読みやすく  
+- スクリプトは共有と再現を意識して整理
+
