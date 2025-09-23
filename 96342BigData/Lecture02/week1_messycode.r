@@ -86,5 +86,5 @@ print(xx[ , c(1,3,4,5)])
 ## すでに detach 済みだが、二重で呼んでも安全にするなら存在チェックを挟む
 if("x" %in% search()) detach("x")
 
-# THE END (I guess)
+# THE END
 
