@@ -1,6 +1,6 @@
 
 #上のSessionタブからでもwdを設定できる
-setwd("C:/Users/chiak/OneDrive - BI Norwegian Business School (BIEDU)/Bologna_2025_Fall/96342_BigData_in_Social_Sciences/Lecture02/Group_Activity-20250923")
+#Security上ファイルパスは削除されています
 
 #Fileを読み込む
 x = read.csv("UNdata.txt")
