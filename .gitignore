@@ -11,3 +11,10 @@
 69968MRA/L03/wghtclub.sas7bdat
 69968MRA/L03/wghtclub1.sas7bdat
 69968MRA/L03/wghtclub2.sas7bdat
+
+# RStudio project files
+*.Rproj
+
+# Windows system files
+desktop.ini
+Thumbs.db
