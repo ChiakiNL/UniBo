@@ -7,8 +7,8 @@ x = read.csv("UNdata.txt")
 
 #必要なパッケージのみを読み込む
 suppressMessages(library(tidyverse))
-library(ggplot2) 
-library(dplyr) 
+library(ggplot2)
+library(dplyr)
 
 options(scipen = 999)
 
