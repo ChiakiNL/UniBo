@@ -1,0 +1,206 @@
+
+---
+title: "Big Data in Social Sciences: Lecture 03"
+author: "ChiakiN"
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Announcements
+
+* There is a guest lecture next Friday.
+* Next week the class meets on Tuesday, not Monday.
+* Install R and RStudio, then update your packages.
+
+# R basics
+
+## Assignment and functions
+
+Use `<-` or `=` for assignment.
+
+```{r}
+x <- 5
+y = 10
+x + y
+```
+
+Functions take arguments in parentheses.
+
+```{r}
+mean(c(1, 2, 3, 4))
+```
+
+# Data as tables
+
+In social sciences, data sits in a table.
+Rows are observations, for example a person or a country.
+Columns are variables, for example age or income.
+
+```{r}
+df_people <- data.frame(
+  person_id = 1:4,
+  age = c(21, 23, 22, 25),
+  gender = c("F", "M", "F", "M"),
+  high_school = c("Oslo High", "Bergen High", "Stavanger High", "Trondheim High"),
+  stringsAsFactors = FALSE
+)
+knitr::kable(df_people, caption = "People table, one row per person")
+```
+
+# Tidyverse workflow
+
+We use `dplyr` to transform data, and `tidyr` to reshape data.
+
+```{r}
+library(dplyr)
+library(tidyr)
+```
+
+## Create and modify variables
+
+```{r}
+table1 <- tibble::tibble(
+  country = c("Norway", "Sweden", "Denmark", "Finland"),
+  year = c(2000, 2000, 2000, 2000),
+  cases = c(120, 150, 90, 80),
+  population = c(4.5e6, 8.9e6, 5.3e6, 5.2e6)
+)
+
+table1 <- table1 %>%
+  mutate(rate_per_1000 = cases / population * 1000)
+
+knitr::kable(table1, caption = "Added rate per 1000 with mutate")
+```
+
+## Select columns and filter rows
+
+```{r}
+table1_small <- table1 %>%
+  select(country, year, rate_per_1000) %>%
+  filter(rate_per_1000 > 0.02)
+
+knitr::kable(table1_small, caption = "Selected columns and filtered rows")
+```
+
+## Group and summarize
+
+```{r}
+summary_by_year <- table1 %>%
+  group_by(year) %>%
+  summarize(
+    avg_rate = mean(rate_per_1000),
+    total_cases = sum(cases),
+    .groups = "drop"
+  )
+
+knitr::kable(summary_by_year, caption = "Grouped summary by year")
+```
+
+# Reshape data, wide and long
+
+Wide format places time across columns.
+Long format places time in one column.
+
+```{r}
+wide <- tibble::tibble(
+  country = c("Norway", "Sweden"),
+  `2000` = c(4.2, 5.0),
+  `2001` = c(4.3, 5.1)
+)
+knitr::kable(wide, caption = "Wide format")
+```
+
+```{r}
+long <- wide %>%
+  pivot_longer(cols = -country, names_to = "year", values_to = "value") %>%
+  mutate(year = as.integer(year))
+knitr::kable(long, caption = "Long format")
+```
+
+```{r}
+wide_again <- long %>%
+  pivot_wider(names_from = year, values_from = value)
+knitr::kable(wide_again, caption = "Back to wide")
+```
+
+# Join datasets
+
+We match rows by a key, here the key is `country`.
+
+```{r}
+meta <- tibble::tibble(
+  country = c("Norway", "Sweden", "Denmark"),
+  continent = c("Europe", "Europe", "Europe"),
+  iso2 = c("NO", "SE", "DK")
+)
+
+left_joined  <- left_join(table1, meta, by = "country")
+inner_joined <- inner_join(table1, meta, by = "country")
+full_joined  <- full_join(table1, meta, by = "country")
+
+knitr::kable(left_joined,  caption = "Left join keeps all rows from table1")
+knitr::kable(inner_joined, caption = "Inner join keeps only matches")
+knitr::kable(full_joined,  caption = "Full join keeps all rows from both")
+```
+
+# Pipes
+
+You can use the base R pipe `|>` or the magrittr pipe `%>%`.
+Both read like a sequence of steps.
+
+```{r}
+# Base pipe
+table1 |> filter(cases > 90) |> arrange(desc(cases))
+```
+
+```{r}
+# Magrittr pipe
+table1 %>% filter(cases > 90) %>% arrange(desc(cases))
+```
+
+# Visualization with ggplot2
+
+```{r}
+library(ggplot2)
+
+ggplot(table1, aes(x = year, y = cases, group = country)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Cases by country and year", x = "Year", y = "Cases")
+```
+
+```{r}
+avg_rate_by_country <- table1 %>%
+  group_by(country) %>%
+  summarize(avg_rate = mean(rate_per_1000), .groups = "drop")
+
+ggplot(avg_rate_by_country, aes(x = country, y = avg_rate)) +
+  geom_col() +
+  labs(title = "Average rate per 1000 by country", x = "Country", y = "Average rate per 1000")
+```
+
+# Clean data checklist
+
+* One observation in each row.
+* One variable in each column.
+* Use clear names, use lower case and underscores.
+* Keep types consistent, for example numbers as numeric, dates as Date.
+
+# Session info
+
+`sessionInfo()` is an R function that prints details about your current R session.
+
+It is very useful for reproducibility, especially when you share code (for example, on GitHub). It helps others know which R version and which packages you used.
+
+# Practice tasks
+
+* Add a column with cases per 10,000.
+* Filter for countries with rate above the median.
+* Join a table that holds region codes.
+* Make a scatter plot of population and cases.
+
+---
