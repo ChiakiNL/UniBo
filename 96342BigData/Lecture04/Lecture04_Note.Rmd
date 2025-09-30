@@ -1,0 +1,271 @@
+---
+title: "Big Data 講義4ノート：人口学の基礎指標（出生と死亡）"
+author: "Chiaki（based on script by Nicola Barban, 2023-09-28）"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    df_print: paged
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.width = 7, fig.height = 4.5)
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+# 今日のゴール
+
+- 3つのデータ（Sweden, Kenya, World）を読み込み、**人年（person-years）**で指標化する  
+- **CBR**（粗出生率）, **ASFR**（年齢別出生率）, **TFR**（合計特殊出生率）を計算する  
+- **CDR**（粗死亡率）, **ASDR**（年齢別死亡率）を計算する  
+- 年齢構成の差を補正するために、**カウンターファクト**を計算する（標準化の直観）  
+
+> 重要な考え方  
+> 粗率は年齢構成の影響を強く受ける。年齢別率で比較すると構造の違いを分けて考えられる。
+
+# データ読み込み
+
+配布元の URL から直接読み込みます。必要ならローカル保存も行います。
+
+```{r load-data}
+# URL から読み込み
+Sweden <- readr::read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/INTRO/Sweden.csv")
+Kenya  <- readr::read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/INTRO/Kenya.csv")
+World  <- readr::read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/INTRO/World.csv")
+
+# 構造確認
+glimpse(Sweden)
+```
+
+# 前処理：人年の合計を作る
+
+`py.total = py.men + py.women` を追加します。
+
+```{r make-py-total}
+add_py_total <- function(df) {
+  df %>% mutate(py.total = py.men + py.women)
+}
+
+Sweden <- add_py_total(Sweden)
+Kenya  <- add_py_total(Kenya)
+World  <- add_py_total(World)
+```
+
+# 粗出生率 CBR
+
+定義  
+\[
+\text{CBR} = \frac{\sum \text{births}}{\sum \text{py.total}}
+\]
+
+## インデックス指定の素朴な方法
+
+期間が「最初の15行」「次の15行」で整列している前提の計算例です。
+
+```{r cbr-base}
+Sweden.CBR <- c(sum(Sweden$births[1:15]) / sum(Sweden$py.total[1:15]),
+                sum(Sweden$births[16:30]) / sum(Sweden$py.total[16:30]))
+Kenya.CBR  <- c(sum(Kenya$births[1:15])  / sum(Kenya$py.total[1:15]),
+                sum(Kenya$births[16:30])  / sum(Kenya$py.total[16:30]))
+World.CBR  <- c(sum(World$births[1:15])  / sum(World$py.total[1:15]),
+                sum(World$births[16:30])  / sum(World$py.total[16:30]))
+
+names(Sweden.CBR) <- c("1950-1955","2005-2010")
+names(Kenya.CBR)  <- c("1950-1955","2005-2010")
+names(World.CBR)  <- c("1950-1955","2005-2010")
+
+Sweden.CBR; Kenya.CBR; World.CBR
+```
+
+## Tidyverse で安全に集計する方法
+
+```{r cbr-tidy}
+cbr_by_period <- function(data) {
+  data %>%
+    group_by(period) %>%
+    summarise(CBR = sum(births, na.rm = TRUE) / sum(py.men + py.women, na.rm = TRUE), .groups = "drop")
+}
+
+Sweden.period.CBR <- cbr_by_period(Sweden)
+Kenya.period.CBR  <- cbr_by_period(Kenya)
+World.period.CBR  <- cbr_by_period(World)
+
+Sweden.period.CBR
+Kenya.period.CBR
+World.period.CBR
+```
+
+> 単位変換  
+> CBR は千対で示すことが多い。`CBR * 1000` で換算。
+
+```{r cbr-per-1000}
+to_per_1000 <- function(df, rate_col) {
+  df %>% mutate(per_1000 = {{ rate_col }} * 1000)
+}
+
+to_per_1000(Sweden.period.CBR, CBR)
+to_per_1000(Kenya.period.CBR,  CBR)
+to_per_1000(World.period.CBR,  CBR)
+```
+
+# 年齢別出生率 ASFR と TFR
+
+**ASFR** は女性の年齢階級ごとの出生率です。  
+\[
+\text{ASFR}_{a} = \frac{\text{births}_{a}}{\text{py.women}_{a}}
+\]
+
+分析対象の年齢階級は 15から49 です。
+
+```{r asfr}
+fertility_ages <- c("15-19","20-24","25-29","30-34","35-39","40-44","45-49")
+
+ASFR <- function(data) {
+  data %>%
+    group_by(period) %>%
+    mutate(asfr = births / py.women) %>%
+    filter(age %in% fertility_ages) %>%
+    select(period, age, asfr) %>%
+    ungroup()
+}
+
+Sweden.period.ASFR <- ASFR(Sweden)
+Kenya.period.ASFR  <- ASFR(Kenya)
+World.period.ASFR  <- ASFR(World)
+
+head(Sweden.period.ASFR)
+```
+
+可視化でピークの移動を確認します。
+
+```{r plot-asfr}
+ggplot(Sweden.period.ASFR, aes(x = age, y = asfr, group = period)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Sweden: 年齢別出生率 ASFR", x = "年齢階級", y = "ASFR")
+```
+
+**TFR** は ASFR 合計に階級幅 5 を掛けます。  
+\[
+\text{TFR} = \sum_a \text{ASFR}_a \times 5
+\]
+
+```{r tfr}
+tfr_from_asfr <- function(asfr_df) {
+  asfr_df %>%
+    group_by(period) %>%
+    summarise(TFR = sum(asfr, na.rm = TRUE) * 5, .groups = "drop")
+}
+
+Sweden.TFR <- tfr_from_asfr(Sweden.period.ASFR)
+Kenya.TFR  <- tfr_from_asfr(Kenya.period.ASFR)
+World.TFR  <- tfr_from_asfr(World.period.ASFR)
+
+Sweden.TFR
+Kenya.TFR
+World.TFR
+```
+
+> TFR の読み方  
+> 2.1 付近なら人口は自然増減が安定に近い。2を下回ると自然減になりやすい。
+
+# 粗死亡率 CDR と 年齢別死亡率 ASDR
+
+**CDR**  
+\[
+\text{CDR} = \frac{\sum \text{deaths}}{\sum \text{py.total}}
+\]
+
+```{r cdr}
+CDR <- function(data) {
+  data %>%
+    group_by(period) %>%
+    summarise(CDR.total = sum(deaths, na.rm = TRUE) / sum(py.men + py.women, na.rm = TRUE),
+              .groups = "drop")
+}
+
+CDR(Sweden)
+CDR(Kenya)
+CDR(World)
+```
+
+**ASDR**  
+\[
+\text{ASDR}_{a} = \frac{\text{deaths}_{a}}{\text{py.total}_{a}}
+\]
+
+```{r asdr}
+ASDR <- function(data, target_period = "2005-2010") {
+  data %>%
+    mutate(py.total = py.men + py.women) %>%
+    group_by(period, age) %>%
+    summarise(asdr = sum(deaths, na.rm = TRUE) / sum(py.total, na.rm = TRUE),
+              .groups = "drop") %>%
+    filter(period == target_period)
+}
+
+Sweden.ASDR <- ASDR(Sweden)
+Kenya.ASDR  <- ASDR(Kenya)
+
+head(Sweden.ASDR)
+head(Kenya.ASDR)
+```
+
+可視化で形状を比較します。
+
+```{r plot-asdr}
+ggplot(Kenya.ASDR, aes(x = age, y = asdr)) +
+  geom_point() +
+  labs(title = "Kenya: 年齢別死亡率 ASDR（2005-2010）", x = "年齢階級", y = "ASDR")
+```
+
+# 年齢構成をそろえるカウンターファクト
+
+問い  
+「**スウェーデンの2005-2010の年齢構成**を使った場合、**ケニアの死亡率**での粗死亡率はどうなるか」
+
+手順  
+1. スウェーデンの 2005-2010 の `py.total` を合計して、年齢別構成比を作る  
+2. ケニアの 2005-2010 の **ASDR** を、その構成比で重み付けして合計する  
+
+```{r counterfactual}
+# 1) Sweden 2005-2010 の年齢別構成比
+Sweden.2005 <- Sweden %>%
+  filter(period == "2005-2010") %>%
+  mutate(py.total = py.men + py.women)
+
+Swe.tot.py <- sum(Sweden.2005$py.total, na.rm = TRUE)
+
+Sweden.2005 <- Sweden.2005 %>%
+  mutate(pop.prop = py.total / Swe.tot.py) %>%
+  select(age, pop.prop)
+
+# 2) Kenya の ASDR（2005-2010）と結合して重み付け平均
+Kenya.ASDR.2005 <- Kenya.ASDR %>% select(age, asdr)
+
+Kenya.counter.CDR <- Kenya.ASDR.2005 %>%
+  inner_join(Sweden.2005, by = "age") %>%
+  summarise(counterfactual_CDR = sum(asdr * pop.prop, na.rm = TRUE)) %>%
+  pull(counterfactual_CDR)
+
+Kenya.counter.CDR
+```
+
+比較用に、ケニアの実際の CDR（2005-2010）も出します。
+
+```{r compare-counterfactual}
+Kenya.CDR.2005 <- CDR(Kenya) %>% filter(period == "2005-2010")
+Kenya.CDR.2005
+```
+
+# まとめ
+
+- **CBR** は人口全体の粗い出生強度。年齢構成の影響を強く受ける  
+- **ASFR と TFR** は年齢構成を分けて考えるので比較に向く  
+- **CDR と ASDR** も同様に、年齢別で見ると差の要因が切り分けやすい  
+- 年齢構成をそろえると、**構造**と**純粋な率**を分けて議論できる
+
+---
