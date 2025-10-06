@@ -1,0 +1,248 @@
+---
+title: "講義05 Causality Note（RCT&DiD）"
+subtitle: "Big Data in Social Sciences"
+author: "Chiaki_Nishihara"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    df_print: paged
+---
+
+# 0. 学習ゴール
+
+- 潜在アウトカムと反事実の考え方を理解する。
+- RCTの設計とバランステーブルの役割を説明できる。
+- `social.csv`の投票実験と`rosca.csv`のケニア実験を、集計と回帰で再現し解釈する。
+- 観察研究の課題とDiDの直観と式を理解し、ジョン・スノウと最低賃金の例に当てはめる。
+
+# A. RCTと投票実験（social.csv）
+
+## A-1. セットアップとデータ確認
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+```{r read-social}
+social <- read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/CAUSALITY/social.csv")
+```
+
+```{r glance-social}
+glimpse(social)
+summary(social)
+```
+
+## A-2. 群別平均と可視化
+
+```{r group-means-social}
+turnout_by_message <- social |>
+  group_by(messages) |>
+  summarize(turnout = mean(primary2006), .groups = "drop")
+turnout_by_message
+```
+
+```{r group-means-sd-n}
+sum_turnout_by_message <- social |>
+  group_by(messages) |>
+  summarise(turnout = mean(primary2006),
+            sd = sd(primary2006),
+            n = length(primary2006))
+sum_turnout_by_message
+```
+
+```{r bar-social-1, fig.height=4}
+sum_turnout_by_message |>
+  ggplot(aes(x = messages, y = turnout)) +
+  geom_bar(stat = "identity")
+```
+
+```{r bar-social-2, fig.height=4}
+sum_turnout_by_message |>
+  mutate(messages = fct_reorder(messages, turnout)) |>
+  ggplot(aes(x = messages, y = turnout)) +
+  geom_bar(stat = "identity") +
+  theme_minimal()
+```
+
+## A-3. 参照カテゴリ設定と線形モデル
+
+```{r relevel-messages}
+social <- social |>
+  mutate(messages = as_factor(messages)) |>
+  mutate(messages = relevel(messages, ref = "Control"))
+```
+
+```{r lm-social}
+mod1 <- lm(primary2006 ~ messages, data = social)
+```
+
+```{r tidy-lm-social}
+library(broom)
+tidy(mod1)
+```
+
+> 解釈メモ: 係数は「Controlに対する差」。RCTなので平均差に近い因果解釈がしやすい。
+
+# B. ケニアの貯蓄実験（rosca.csv）
+
+## B-1. データ読み込みと処置ラベル生成
+
+```{r read-rosca}
+rosca <- read.csv("data/rosca.csv") |>
+  mutate(
+    treatment = case_when(
+      encouragement == 1 ~ "control",
+      safe_box == 1 ~ "safebox",
+      locked_box == 1 ~ "lockbox"
+    ),
+    treatment = as.factor(treatment)
+  )
+```
+
+```{r size-by-group}
+rosca |>
+  count(treatment)
+```
+
+## B-2. 追跡残存の確認（アトリション）
+
+```{r followup}
+rosca2 <- rosca %>% filter(has_followup2 == 1)
+rosca2 %>% count(treatment)
+
+treatment_table <- rosca %>% count(treatment)
+treatment_table2 <- rosca2 %>% count(treatment)
+
+# 群別の相対的な変化率
+(treatment_table2$n - treatment_table$n) / treatment_table$n
+```
+
+> 解釈メモ: 群で残存率が違えば、内的妥当性を損なう可能性がある。
+
+## B-3. バランステーブル（事前特性）
+
+```{r balance-table}
+rosca |>
+  group_by(treatment)  |>
+  summarise_at(vars(bg_female, bg_married, bg_b1_age), list(mean = mean))
+```
+
+## B-4. 主要アウトカム記述と図
+
+```{r outcome-sum}
+sum_invest_by_treatment <- rosca |>
+  group_by(treatment) |>
+  summarise(
+    investment = mean(fol2_amtinvest, na.rm = TRUE),
+    sd = sd(fol2_amtinvest, na.rm = TRUE),
+    n = sum(has_followup2)
+  )
+sum_invest_by_treatment
+```
+
+```{r bar-outcome, fig.height=4}
+rosca |>
+  ggplot(aes(x = treatment, y = fol2_amtinvest)) +
+  geom_bar(stat = "identity") +
+  theme_minimal()
+```
+
+```{r bar-outcome-by-gender, fig.height=4}
+rosca |>
+  ggplot(aes(x = treatment, y = fol2_amtinvest, fill = as.factor(bg_female))) +
+  geom_bar(position = "dodge", stat = "summary", fun = "mean") +
+  theme_minimal()
+```
+
+## B-5. 共変量調整つき回帰
+
+```{r lm-rosca-1}
+rosca.mod1 <- lm(fol2_amtinvest ~ treatment + bg_female + bg_married + bg_b1_age, data = rosca)
+```
+
+```{r tidy-rosca-1}
+library(broom)
+tidy(rosca.mod1)
+```
+
+## B-6. 効果の不均一性（交互作用）
+
+```{r lm-rosca-2}
+rosca.mod2 <- lm(
+  fol2_amtinvest ~ treatment 
+  + treatment:bg_female 
+  + treatment:bg_married
+  + treatment:bg_b1_age 
+  + bg_female + bg_married + bg_b1_age,
+  data = rosca
+)
+```
+
+```{r tidy-rosca-2}
+tidy(rosca.mod2)
+```
+
+> 解釈メモ: 交互作用係数が正で有意なら、該当属性で上乗せ効果がある。
+
+# C. 観察研究とDifference-in-Differences（DiD）
+
+## C-1. 観察研究の要点
+
+- 介入を操作せず、自然に起きた処置と結果を観測して分析する。
+- 内的妥当性はRCTより弱いことが多い。設計と仮定が重要。
+
+## C-2. DiDの基本式と回帰表示
+
+- 二群二時点の差の差で効果を抽出する。
+
+\[
+\text{DiD} = (\bar{Y}_{treat, after} - \bar{Y}_{treat, before}) - (\bar{Y}_{ctrl, after} - \bar{Y}_{ctrl, before})
+\]
+
+- 回帰表示
+
+\[
+Y = \alpha + \gamma \cdot Treat + \lambda \cdot Post + \delta (Treat\times Post) + \varepsilon,\quad \delta=DiD
+\]
+
+> 仮定メモ: 並行トレンド、スピルオーバー無し、割当の外生性。
+
+## C-3. 事例メモ（スライド要旨に基づくテキスト）
+
+- **John Snowとコレラ**: 1849年と1854年の死亡率を、給水会社の取水口移転という外生ショックで比較。差の差は大きな負の推定。水系感染の証拠として解釈。
+- **最低賃金と雇用（Card & Krueger）**: 1992年にNJのみ最低賃金が上がり、PAは据え置き。ファストフード雇用の差の差は約+6.1ポイント。並行トレンドとスピルオーバーに注意して解釈。
+
+# D. 用語ミニ辞典（短い定義と例）
+
+- **RCT**: 無作為割付実験。平均差を因果効果として解釈しやすい。
+- **潜在アウトカム, 反事実**: 同じ個体の処置ありとなしの結果。観測は片方。
+- **バランステーブル**: 事前特性の群差を点検する表。割付の妥当性チェック。
+- **アトリション**: 追跡脱落。群で偏ると推定が歪む。
+- **観察研究**: 介入せず観測のみ。交絡の管理が課題。
+- **DiD**: 差の差で介入の影響を抽出する方法。回帰の交互作用係数が効果。
+
+# E. 実装チェックリスト（このRmdに沿って実行）
+
+## social.csv（投票実験）
+
+1. `glimpse`, `summary`で型と欠測を確認。
+2. 群別平均、sd、nを算出、棒グラフで可視化。
+3. `Control`基準の`lm(primary2006 ~ messages)`を推定し、係数を解釈。
+4. 可能なら事前特性のバランステーブルを確認。
+
+## rosca.csv（ケニア貯蓄）
+
+1. `treatment`生成、群サイズ比較。
+2. 追跡残存率の比較でアトリション確認。
+3. 事前特性バランスを点検。
+4. 群別平均、sd、nを算出、図で直観を得る。
+5. `lm(fol2_amtinvest ~ treatment + 共変量)`で効果推定。
+6. `treatment:属性`交互作用で不均一性を検証。
+
+# 付記
+
+- ここに`broom::tidy()`の実行結果を貼ると、提出用の解釈が整う。
+- 並行トレンドの確認やイベントスタディ図は、追加分析として別チャンクで追記可能。
