@@ -1,0 +1,238 @@
+---
+title: "RCT"
+subtitle: "Big Data in Social Sciences"
+institute: "University of Bologna"
+author: "Nicola Barban"
+format:
+  html
+execute:
+  echo: true
+  eval: true
+  warning: false
+---
+
+```{r}
+library(tidyverse)
+ social <-
+   read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/CAUSALITY/social.csv")
+```
+
+```{r}
+glimpse(social)
+```
+
+```{r}
+summary(social)
+
+```
+
+```{r}
+turnout_by_message <-
+  social |>
+  group_by(messages) |>
+  summarize(turnout = mean(primary2006) )
+                  
+```
+
+```{r}
+turnout_by_message
+```
+
+```{r}
+sum_turnout_by_message <-
+  social |>
+  group_by(messages) |>
+  summarise(turnout = mean(primary2006),
+            sd = sd(primary2006),
+            n = length(primary2006) )
+                  
+```
+
+```{r}
+sum_turnout_by_message
+```
+
+```{r}
+sum_turnout_by_message |> 
+ggplot( aes(x=messages, y=turnout)) +
+  geom_bar(stat="identity")
+```
+
+```{r}
+sum_turnout_by_message |> 
+    mutate(messages = fct_reorder(messages, turnout)) |> 
+ggplot( aes(x=messages, y=turnout)) +
+  geom_bar(stat="identity")+
+  theme_minimal()
+```
+
+```{r}
+turnout_by_message |>
+  spread(messages, turnout) |>
+  mutate(diff_civic_duty = `Civic Duty` - `Control`,
+         diff_Hawthorne = `Hawthorne` - `Control`,
+         diff_Neighbors = `Neighbors` - `Control`) |>
+  select(matches("diff_"))
+
+
+```
+
+```{r}
+social |>
+  mutate(age = 2006 - yearofbirth) |>
+  group_by(messages)  |>
+  summarise_at(vars(primary2004, age, hhsize),  list(mean = mean))
+```
+
+```{r}
+social <- social |> 
+  mutate(messages = as_factor(messages)  ) |> 
+  mutate(messages = relevel(messages, ref= "Control"))
+# using control as reference category
+```
+
+Fitting a linear model
+
+```{r}
+mod1 = lm(primary2006~messages, data = social)
+# ~ symbol using ALT+5
+
+```
+
+
+
+```{r}
+library(broom)
+tidy(mod1)
+```
+
+
+Descriptions of the relevant variables in the data file `rosca.csv` are:
+
+--------------------------------------------------------------------------------------------
+ Name                             Description
+ -------------------------------- ----------------------------------------------------------
+ `bg_female`                      `1` if female, and `0` otherwise
+ 
+ `bg_married`                     `1` if married, and `0` otherwise
+ 
+ `bg_b1_age`                      age at baseline
+ 
+ `encouragement`                  `1` if encouragement only (control group), and `0` otherwise 
+ 
+ `safe_box`                       `1` if safe box treatment, and `0` otherwise
+ 
+ `locked_box`                     `1` if lock box treatment, and `0` otherwise
+ 
+ `fol2_amtinvest`                 Amount invested in health products         
+ 
+ `has_followup2`                  `1` if appears in 2nd followup (after 12 months), and `0` otherwise
+--------------------------------------------------------------------------------------------
+ 
+```{r}
+library(tidyverse)
+
+rosca <- read.csv("data/rosca.csv") |> 
+  mutate(
+    treatment = case_when(
+      encouragement == 1 ~ "control",
+      safe_box == 1 ~ "safebox",
+      locked_box == 1 ~ "lockbox")) |> 
+  mutate(treatment = as.factor(treatment))
+
+treatment_table <- rosca |> 
+  count(treatment)
+
+print(treatment_table)
+
+```
+```{r}
+rosca2 <- rosca %>%
+  filter(has_followup2 == 1)
+
+treatment_table2 <- rosca2 %>%
+  count(treatment)
+
+treatment_table_difference <- (treatment_table2$n - treatment_table$n) / treatment_table$n
+
+treatment_table_difference
+```
+
+balancing table
+```{r}
+rosca |>
+  group_by(treatment)  |>
+  summarise_at(vars(bg_female, bg_married, bg_b1_age),  list(mean = mean))
+```
+
+
+```{r}
+
+sum_invest_by_treatment <-
+  rosca |> 
+  group_by(treatment) |>
+  summarise(investment = mean(fol2_amtinvest, na.rm=T),
+            sd = sd(fol2_amtinvest, na.rm=T),
+            n = sum(has_followup2) )
+#na.rm removes NAs from the calculation of mean and sd
+
+sum_invest_by_treatment
+```
+```{r}
+rosca |> 
+ggplot( aes(x=treatment, y=fol2_amtinvest)) +
+  geom_bar(stat="identity")+
+  theme_minimal()
+```
+
+
+```{r}
+rosca |> 
+ggplot( aes(x=treatment, y=fol2_amtinvest, fill = as.factor(bg_female))) +
+  geom_bar(position = "dodge", stat = "summary", fun = "mean")+
+  theme_minimal()
+```
+
+Fitting a linear model
+
+```{r}
+rosca.mod1 = lm(fol2_amtinvest~treatment 
+                + bg_female
+                + bg_married
+                +bg_b1_age, data = rosca)
+# ~ symbol using ALT+5
+
+```
+
+
+
+```{r}
+library(broom)
+tidy(rosca.mod1)
+```
+```{r}
+rosca |> 
+ggplot( aes(x=treatment, y=fol2_amtinvest, fill = as.factor(bg_female))) +
+  geom_bar(position = "dodge", stat = "summary", fun = "mean")+
+  theme_minimal()
+```
+
+Fitting a linear model with interactions
+
+```{r}
+rosca.mod2 = lm(fol2_amtinvest~treatment 
+                + treatment:bg_female 
+                + treatment:bg_married
+                + treatment:bg_b1_age 
+                + bg_female
+                + bg_married
+                + bg_b1_age, data = rosca)
+
+```
+
+
+
+```{r}
+library(broom)
+tidy(rosca.mod2)
+```
