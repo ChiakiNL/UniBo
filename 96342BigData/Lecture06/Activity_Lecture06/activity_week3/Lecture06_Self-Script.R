@@ -3,13 +3,13 @@
 # Use did_training 1.csv
 
 # Import dataset
-
-did_training_1 <- read.csv("C:/Users/chiak/OneDrive - BI Norwegian Business School (BIEDU)/GitHub/UniBo/96342BigData/Lecture06/Activity_week3/activity_week3/did_training_1.csv")
-
-View(did_training_1)
   
 library(tidyverse)
 library(gapminder)
+
+did_training_1 <- read_csv("did_training_1.csv")
+
+View(did_training_1)
 
 # Filter 
 did_small <- did_training_1 %>%

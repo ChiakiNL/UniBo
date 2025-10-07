@@ -4,23 +4,16 @@
 
 # Packages
 library(tidyverse)
-library(broom)           # tidy model outputs
-# Optional for nice tables:
-# install.packages("modelsummary"); library(modelsummary)
+library(broom)
 
 rm(list=ls())
+
 # ----------------------------
 # 0) Load data
 # ----------------------------
-# Set this to one of the files you use in class:
-#   "did_training_1.csv"
-#   "did_training_2.csv"
-#   "did_training_3.csv"
 
-data_path <- read.csv("C:/Users/chiak/OneDrive - BI Norwegian Business School (BIEDU)/GitHub/UniBo/96342BigData/Lecture06/Activity_week3/activity_week3/did_training_1.csv")
-
-df <- readr::read_csv(data_path, show_col_types = FALSE)
-
+# パスをそのまま指定（または相対パスでもOK）
+df <- read_csv("did_training_1.csv", show_col_types = FALSE) %>%
   mutate(
     treated = as.integer(treated_group),
     post    = as.integer(post),
