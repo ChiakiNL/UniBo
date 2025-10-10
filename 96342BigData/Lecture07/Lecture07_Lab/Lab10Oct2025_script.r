@@ -569,6 +569,8 @@ model <- lm(
   weights = pop
 )
 
+summary(model)
+
 # ▼ Step 3: 回帰表を表示
 #   - moderndive::get_regression_table() は見やすい要約表を返す
 #   - 係数, 標準誤差, t値, p値, 信頼区間などを確認できる
