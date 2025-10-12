@@ -1,0 +1,18 @@
+Dataset: Students (from Base SAS Samples → CHART Procedure)
+
+Create a permanent library.
+How many students completed the exam in each section? How many were male and how many female? Request a Chi-square test.
+Find the highest grade in each exam section.
+Display the names of the students who received the highest grade in each section.
+Calculate the average grade for male and female students.
+
+
+Dataset: Cake (from PROC MEANS examples)
+
+Create a permanent library named ck.
+Use the dataset "cake" found in the PROC MEANS examples.
+How many chocolate cakes were presented during the competition?
+Find the highest taste score for each flavor and save it in a new dataset.
+Add the highest taste score for each cake flavor to the original cake dataset.
+Create a numeric variable (0 or 1) in the new dataset to identify the winner for each flavor based on taste score.
+Transpose the variables presentscore and tastescore (make sure the identifier used is unique).
