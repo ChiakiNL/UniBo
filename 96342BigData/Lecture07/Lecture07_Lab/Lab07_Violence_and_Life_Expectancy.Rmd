@@ -1,0 +1,607 @@
+---
+title: "Lab 07: Violence and Life Expectancy"
+subtitle: "Lecture Note"
+author: "Chiaki"
+date: "2025-10-13"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+  pdf_document:
+    toc: true
+    number_sections: true
+fontsize: 11pt
+---
+
+**clean environment**
+
+```{r, eval=TRUE, message=TRUE, warning=TRUE}
+rm(list=ls())
+```
+
+**Install Packages**
+
+- various qualitative color palettes  
+- various themes in ggplot  
+- linear regression in tidyverse  
+- tables  
+- plot coefficients
+
+```{r}
+#install.packages('ggthemes') 
+#install.packages('RColorBrewer') 
+#install.packages('moderndive') 
+#install.packages('ggstats')
+library('RColorBrewer') 
+library('ggthemes') 
+library("tidyverse")  
+library("moderndive")
+library('knitr')
+library('ggstats')
+```
+
+## Upload data
+
+- Violence data  
+- Data on male life expectancy  
+- Data on female life expectancy
+
+```{r}
+# Violence data
+gpi_data <- read.csv('Data/data_gpi_final.csv') 
+# Data on male life expectancy
+life_exp_male <- read.csv('Data/male_data.csv')
+# Data on female life expectancy
+life_exp_female <- read.csv('Data/female_data.csv')
+```
+
+コメントアウトショートカットキー: ctrl + shift + c
+
+# Combine data sets
+
+1. GPIを基準にして始める  
+2. 男性寿命データ (life_exp_male) を、iso3（国コード）と Year（年）という共通カラムを使って結合する  
+3. 次に、その結果に 女性寿命データ (life_exp_female) を、iso3, Year, country の3つの共通カラムで結合する  
+最終的に、すべての情報がそろった新しいデータフレームを data に保存する
+
+```{r}
+data <- gpi_data |>
+  inner_join(life_exp_male,by=c("iso3","Year")) |>
+  inner_join(life_exp_female,by=c("iso3","Year","country")) 
+```
+
+# Question 1
+
+## data to be plotted
+
+Step 1: 結合済みデータ "data" をもとに処理を開始  
+Step 2: "Year"（年）と "area"（地域）ごとにグループ化する（各年・各地域単位で集計）  
+Step 3: summarize() で人口加重平均（weighted mean）を計算する  
+- gpi = 暴力レベル（Global Peace Index）  
+- pop = 各国の人口（重みとして使用）  
+- weighted.mean() = 人口を重みとして平均  
+- na.rm = FALSE は欠損値を無視しない設定（TRUEにすると無視）
+
+```{r}
+data_violence_region <- data |>
+  group_by(Year,area) |>
+  summarize(gpi=weighted.mean(x=gpi,w=pop,na.rm = FALSE)) 
+```
+
+## plot
+
+地域ごとの暴力レベル（GPI）の推移を可視化するプロットを作成。  
+- ggplot() で折れ線グラフ  
+- "data_violence_region" は地域別の年次GPI平均
+
+```{r}
+plot1 <- ggplot(
+  data = data_violence_region,                 # 使用するデータ
+  mapping = aes(x = Year, y = gpi, color = area) # X軸=年, Y軸=GPI, 色=地域
+) +
+  geom_line() +        # 各地域のGPIの推移を線で描く
+  geom_point() +       # 各年ごとに点を追加して視認性を上げる
+  theme_clean() +      # 背景をシンプルな白基調に変更
+  scale_color_brewer(
+    name = "Region",   # 凡例タイトル
+    palette = "Set3"   # RColorBrewerの「Set3」カラーパレットを使用 (https://r-graph-gallery.com/38-rcolorbrewers-palettes.html)
+  ) +
+  scale_x_continuous(
+    breaks = seq(2009, 2023, 2),  # X軸の目盛り（2009年から2年刻み）
+    labels = seq(2009, 2023, 2)   # 表示ラベルも同じ範囲で指定
+  ) +
+  xlab('Year') +                  # X軸タイトルを「Year」に設定
+  ylab('Level of Violence') +     # Y軸タイトルを「Level of Violence」に設定
+  ggtitle('Region-specific Violence over Time')  # グラフタイトル
+
+# 最後にプロットを出力
+plot1
+```
+
+出力結果: 各地域ごとの暴力レベル（GPI）の平均値を、2009年〜2023年の期間で折れ線グラフとして表示。  
+線の色で地域を区別し、暴力レベルの時間的な変化を比較できる。
+
+# Question 2
+
+## 地域ごとの男女別平均寿命の推移を作成・可視化
+
+▼ Step 1: データ整形  
+"data" は男性・女性の寿命が別々の列（wide）。pivot_longer() で long に。  
+性別を "sex" 列、寿命を "life_exp" 列に。
+
+```{r}
+data_life_exp_region <- data |>
+  pivot_longer(
+    !c('Year','iso3','pop','area','gpi','country'),  # 除外する列（それ以外の列を変換対象にする）
+    names_to = 'sex',       # 元の列名を 'sex' という新しい列に格納
+    values_to = 'life_exp'  # 対応する値を 'life_exp' 列に格納
+  ) |>
+  
+  # ▼ Step 2: 性別変数を整形
+  # もとの列名（例："life_exp_male", "life_exp_female"）の10文字目以降を抽出して
+  # "male" と "female" というシンプルなラベルを作成する。
+  mutate(sex = substr(sex, 10, length(sex))) |>
+  
+  # ▼ Step 3: 地域・年・性別ごとにグループ化して加重平均を計算
+  group_by(Year, area, sex) |>
+  summarize(
+    life_exp = weighted.mean(x = life_exp, w = pop, na.rm = FALSE)  # 人口加重平均, na.rm = 欠損値（NA）を削除せずに計算する設定（必要に応じてTRUEに変更可能）
+  )
+```
+
+結果: 各地域・各年・性別ごとの平均寿命データが整う。これを元にグラフを作成。
+
+▼ Step 4: 男女別・地域別の平均寿命の推移を可視化
+
+```{r}
+plot2 <- ggplot(
+  data = data_life_exp_region,                     # データ入力
+  mapping = aes(x = Year, y = life_exp, color = area)  # X軸=年, Y軸=平均寿命, 色=地域
+) +
+  geom_line() +      # 地域ごとの寿命推移を線で表示
+  geom_point() +     # 各年のデータ点を追加
+  annotate("text", x = 2020, y = 55, label = "COVID-19") +  # COVID-19の影響を示す注釈を追加
+  theme_clean() +    # 背景をシンプルに
+  facet_wrap(~sex) + # 性別ごとに2つのグラフを作成（男女比較ができる）
+  xlab('Year') +     # X軸ラベル
+  ylab('Life Expectancy at Age 30') +  # Y軸ラベル
+  scale_color_brewer(name = "Region", palette = "Set1") +  # カラーパレット設定
+  ggtitle('Region-specific Life Expectancy over Time')     # グラフタイトル
+
+# プロットを出力
+plot2
+```
+
+出力結果:  
+- X軸 = 年（2009〜2023）  
+- Y軸 = 30歳時点の平均余命（Life Expectancy at Age 30）  
+- 色 = 地域（area）  
+- 2つのファセットで男女比較  
+- COVID-19 の注釈あり
+
+# Question 3
+
+--- 暴力レベル（GPI）と平均寿命の関係を2023年データで可視化する準備とプロット ---
+
+▼ Step 1: データ整形  
+"data" の wide を pivot_longer() で long に。sex 列と life_exp 列を作る。
+
+```{r}
+data_scatter <- data |>
+  pivot_longer(
+    !c('Year','iso3','pop','area','gpi','country'), # 除外する列を指定
+    names_to = 'sex',        # 元の列名（例: life_exp_male）を sex に格納
+    values_to = 'life_exp'   # 各列の値を life_exp に格納
+  ) |>
+  
+  # ▼ Step 2: 性別情報の整理
+  # 列名（"life_exp_male" や "life_exp_female"）の10文字目以降を取り出して
+  # "male" と "female" だけを残す。
+  mutate(sex = substr(sex, 10, length(sex))) |>
+  
+  # ▼ Step 3: 2023年のデータだけを抽出
+  filter(Year == 2023)
+```
+
+結果: 2023年の gpi と life_exp がそろう。
+
+▼ Step 4: 暴力レベルと寿命の関係をプロット
+
+```{r}
+plot3 <- ggplot(
+  data = data_scatter,                       # データ入力
+  mapping = aes(x = gpi, y = life_exp)       # X軸 = 暴力レベル, Y軸 = 平均寿命
+) +
+  geom_point(size = 2) +                     # 各国を点で表示（点の大きさ=2）
+  xlab('Level of Violence') +                # X軸ラベル
+  ylab('Life Expectancy at Age 30') +        # Y軸ラベル
+  theme_economist() +                        # 経済誌風のテーマを使用（背景をグレーに）
+  
+  # ▼ Step 5: 回帰直線を追加
+  # method = "lm" は線形回帰, se = FALSE は信頼区間非表示, color = 'red'
+  geom_smooth(method = "lm", se = FALSE, color = 'red') +
+  
+  # ▼ Step 6: 性別ごとにプロットを分ける
+  facet_wrap(~sex) +                         # 男性・女性でサブプロット
+  
+  # ▼ Step 7: 軸とタイトルのフォントサイズ・太字設定
+  theme(
+    axis.text.y   = element_text(size = 15, face = "bold"),   # Y軸目盛り
+    axis.title.y  = element_text(size = 15, face = "bold"),   # Y軸タイトル
+    axis.text.x   = element_text(size = 15, face = "bold"),   # X軸目盛り
+    axis.title.x  = element_text(size = 15, face = "bold")    # X軸タイトル
+  )
+
+# プロットを出力
+plot3
+```
+
+出力結果:  
+- X軸 = 暴力レベル（GPI値が高いほど暴力的）  
+- Y軸 = 平均寿命（30歳時点）  
+- 赤い線 = 線形回帰直線  
+- facet で男女の傾向比較
+
+# Question 4
+
+--- 最も暴力的な国と最も平和的な国の比較（男性寿命の分布を箱ひげ図で可視化） ---
+
+▼ Step 1: 暴力レベルが高い国（2023年）を抽出
+
+```{r}
+data_most_violence <- data |>
+  filter(Year == 2023) |>     # 2023年のデータだけに絞る
+  slice_max(gpi, n = 20) |>   # gpi が最も高い上位20か国
+  mutate(label = 'Most Violent')  # ラベル追加
+
+# 🔍 slice_max() の説明：
+#   - 指定列の値が大きい順に上から n 件を抽出
+#   - 似た関数に slice_min() がある
+# 例）slice_max(gpi, n=3) は上位3件
+```
+
+▼ Step 2: 暴力レベルが低い国（2022年）を抽出
+
+```{r}
+data_most_peaceful <- data |>
+  filter(Year == 2022) |>     # 2022年に絞る
+  slice_min(gpi, n = 20) |>   # gpi が最も低い上位20か国
+  mutate(label = 'Most Peaceful')  # ラベル追加
+
+# 🔍 slice_min() は最小値側から n 件
+```
+
+▼ Step 3: 2つのデータを1つに結合
+
+```{r}
+data_plot <- rbind(data_most_violence, data_most_peaceful)
+# rbind() = 行方向に結合
+# 構造例:
+# | country | Year | gpi | life_exp_male | label |
+```
+
+▼ Step 4: 箱ひげ図を作成
+
+```{r}
+plot4 <- ggplot(
+  data = data_plot,                                # データ入力
+  mapping = aes(x = label, y = life_exp_male, fill = label)  # X=ラベル, Y=男性寿命
+) +
+  geom_boxplot() +                                 # 箱ひげ図
+  coord_cartesian(ylim = c(30, 60)) +              # Y範囲
+  scale_y_continuous(
+    breaks = seq(10, 60, 10),
+    labels = seq(10, 60, 10)
+  ) +
+  theme_tufte() +                                  # ミニマルテーマ
+  scale_fill_discrete(name = '') +                 # 凡例タイトル非表示
+  xlab('') +                                       # X軸タイトルなし
+  ylab('Life Expectancy at Age 30') +              # Y軸タイトル
+  theme(
+    axis.text.y = element_text(size = 15, face = "bold"),
+    legend.text = element_text(size = 15, face = "bold"),
+    axis.title.y = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 15, face = "bold"),
+    axis.title.x = element_text(size = 15, face = "bold")
+  )
+
+# プロットを表示
+plot4
+```
+
+出力結果:  
+- X軸に「Most Violent」「Most Peaceful」  
+- Y軸に「男性の平均寿命（30歳時点）」  
+- 分布比較で、暴力的な国ほど寿命が低く分散が大きい傾向
+
+# Question 5
+
+--- 最も暴力的な国と最も平和的な国の男性寿命の分布を密度プロットで比較 ---
+
+▼ Step 1: ggplot の基本設定  
+▼ Step 2: 密度プロットを作成（alpha で透過）  
+▼ Step 3: 背景テーマを Stata 風に  
+▼ Step 4: 凡例タイトルを非表示  
+▼ Step 5: X軸範囲を 30〜55 に制限  
+▼ Step 6: 軸ラベル設定  
+▼ Step 7: テーマ調整（文字サイズなど）
+
+```{r}
+plot5 <- ggplot(
+  data = data_plot,                               # 使用するデータ（Most Violent + Most Peaceful）
+  aes(x = life_exp_male, color = label, fill = label) # X軸=男性寿命, 色と塗りでグループを区別
+) +
+  
+  # ▼ Step 2: 密度プロット（density plot）を作成
+geom_density(alpha = 0.2, na.rm = TRUE) +
+  # geom_density() = 連続データの分布を滑らかな曲線で表す
+  # alpha = 透過度（0.2）
+  # na.rm = TRUE で欠損値を無視
+  
+  # ▼ Step 3: 背景テーマ
+theme_stata() +
+  
+  # ▼ Step 4: 凡例の設定
+scale_fill_discrete(name = '') +
+  scale_color_discrete(name = '') +
+  
+  # ▼ Step 5: 軸の調整
+coord_cartesian(xlim = c(30, 55)) +
+  scale_x_continuous(
+    breaks = seq(30, 55, 5),
+    labels = seq(30, 55, 5)
+  ) +
+  
+  # ▼ Step 6: 軸ラベル
+ylab('Density') +
+  xlab('Life Expectancy') +
+  
+  # ▼ Step 7: テーマ調整
+theme(
+  axis.text.y   = element_text(size = 15, face = "bold"),
+  legend.position = "bottom",
+  axis.title.y  = element_text(size = 15, face = "bold"),
+  axis.text.x   = element_text(size = 15, face = "bold"),
+  axis.title.x  = element_text(size = 15, face = "bold")
+)
+
+# ▼ Step 8: プロットを出力
+plot5
+```
+
+出力結果:  
+- X軸 = 男性の平均寿命（30〜55）  
+- Y軸 = 密度  
+- 色と塗りで Most Violent と Most Peaceful を区別
+
+# Question 6
+
+--- 暴力レベル（GPI）、平均寿命、人口、地域の関係を多次元的に可視化（散布図） ---
+
+```{r}
+plot6 <- ggplot(
+  data = data_scatter,                             # 使用するデータ（2023年データ, 男女別）
+  mapping = aes(x = gpi, y = life_exp)             # X軸 = 暴力レベル, Y軸 = 平均寿命
+) +
+  
+  # ▼ Step 1: 散布図
+  geom_point(aes(
+    shape = area,                                  # 地域で点の形
+    color = area,                                  # 地域で色
+    size = pop                                     # 人口でサイズ
+  )) +
+  
+  # ▼ Step 2: 軸ラベル
+  xlab('Level of Violence') +
+  ylab('Life Expectancy at Age 30') +
+  
+  # ▼ Step 3: 背景テーマ
+  theme_minimal() +
+  
+  # ▼ Step 4: 回帰直線
+  geom_smooth(method = "lm", se = FALSE, color = 'red') +
+  
+  # ▼ Step 5: 凡例のタイトル
+  labs(size = 'Population Size') +
+  
+  # ▼ Step 6: 形と色
+  scale_shape_manual(
+    name = "Area",
+    values = c(16, 17, 15, 3, 4, 8, 7, 9)
+  ) +
+  scale_color_brewer(
+    name = "Area",
+    palette = "Dark2"
+  ) +
+  
+  # ▼ Step 7: Y軸目盛り
+  scale_y_continuous(
+    breaks = seq(30, 55, 5),
+    labels = seq(30, 55, 5)
+  ) +
+  
+  # ▼ Step 8: facet
+  facet_wrap(~sex) +
+  
+  # ▼ Step 9: テキスト調整
+  theme(
+    axis.text.y    = element_text(size = 12, face = "bold"),
+    axis.title.y   = element_text(size = 15, face = "bold"),
+    legend.title   = element_text(size = 15, face = "bold"),
+    legend.text    = element_text(size = 15, face = "bold"),
+    axis.text.x    = element_text(size = 12, face = "bold"),
+    axis.title.x   = element_text(size = 15, face = "bold")
+  )
+
+# プロットを出力
+plot6
+```
+
+出力結果:  
+- X軸 = GPI, Y軸 = Life Expectancy at Age 30  
+- 色と形 = 地域, サイズ = 人口  
+- 回帰線あり, facet で男女別
+
+# Question 7
+
+--- 2008年から2023年の間で暴力レベルが増加／減少した国を分析・可視化 ---
+
+▼ Step 1: 暴力が「最も増加した」国を抽出
+
+```{r}
+data_high <- data |>
+  filter(Year %in% c(2008, 2023)) |>          # 2008年と2023年のみ
+  select(Year, country, area, gpi) |>         # 必要列のみ
+  pivot_wider(
+    names_from = 'Year',                      # Year を列名化
+    values_from = 'gpi'                       # 年ごとの GPI
+  ) |>
+  mutate(
+    var = (`2023` - `2008`) / `2008`          # 変化率
+  ) |>
+  group_by(area) |>                           # 地域ごと
+  slice_max(var, n = 5) |>                    # 増加率トップ5
+  mutate(label = 'Highest Violence Increase') # ラベル
+```
+
+▼ Step 2: 暴力が「最も減少した」国を抽出
+
+```{r}
+data_low <- data |>
+  filter(Year %in% c(2008, 2023)) |>          # 同様
+  select(Year, country, area, gpi) |>
+  pivot_wider(names_from = 'Year', values_from = 'gpi') |>
+  mutate(
+    var = (`2023` - `2008`) / `2008`
+  ) |>
+  group_by(area) |>
+  slice_min(var, n = 5) |>                    # 減少率トップ5
+  mutate(label = 'Highest Violence Decrease')
+```
+
+▼ Step 3: 2つのデータを結合
+
+```{r}
+plot_data <- rbind(data_high, data_low)
+# rbind() = 行方向に結合
+```
+
+▼ Step 4: 特定地域（例：北アフリカ・西アジア）だけを抽出し可視化
+
+```{r}
+plot7 <- plot_data |>
+  filter(area == 'Northern Africa and Western Asia') |>  # 地域を限定
+  ggplot(
+    aes(
+      x = reorder(country, var),   # 変化率で並び替え
+      y = var,                     # Y軸 = 変化率
+      fill = label                 # 増加 or 減少
+    )
+  ) +
+  
+  geom_bar(stat = 'identity') +               # 棒グラフ
+  theme_clean() +                             # シンプルテーマ
+  xlab('Country') +                           # X軸
+  ylab('Variation in Violence') +             # Y軸
+  scale_fill_brewer(name = '', palette = 'Set2') +  # パレット
+  scale_y_continuous(labels = scales::percent) +    # パーセント表示
+  
+  # ▼ Step 5: テーマ
+  theme(
+    axis.text.x = element_text(
+      angle = 45, vjust = 1, hjust = 1,
+      size = 12, face = "bold"
+    ),
+    legend.position = 'bottom',
+    axis.text.y = element_text(size = 12, face = "bold"),
+    axis.title.x = element_text(size = 15, face = "bold"),
+    axis.title.y = element_text(size = 15, face = "bold"),
+    legend.text = element_text(size = 15, face = "bold")
+  )
+
+# プロットを表示
+plot7
+```
+
+▼ Step 6: グラフをPDFとして保存
+
+```{r}
+ggsave(
+  filename = "Results/plot7.pdf",  # 保存先
+  plot = plot7,                    # 対象プロット
+  height = 20,                     # 高さ（cm）
+  width = 40,                      # 幅（cm）
+  units = "cm",                    # 単位
+  dpi = 400                        # 解像度
+)
+```
+
+出力結果:  
+- 北アフリカ・西アジア地域で、2008→2023 の暴力増減トップ5を棒グラフ  
+- 棒の高さ = 変化率（var）  
+- 色で増加と減少を区別、Y軸はパーセント
+
+# Question 8
+
+make sure to pick a reference category  
+read categorical variables as factors
+
+--- 参照カテゴリを設定し、重み付き線形回帰を推定、結果を表と図で確認する ---
+
+▼ Step 1: 因子化と参照カテゴリの指定  
+- sex と area を factor に変換し参照カテゴリを設定  
+- relevel(ref = ...) で基準カテゴリを指定  
+- 基準選択は解釈の土台
+
+```{r}
+data_scatter <- data_scatter |>
+  mutate(
+    sex  = relevel(as.factor(sex),  ref = "female"),              # 性別の基準を女性に
+    area = relevel(as.factor(area), ref = "Sub-Saharan Africa")   # 地域の基準をサブサハラ・アフリカに
+  )
+```
+
+▼ Step 2: 重み付き線形回帰モデルの推定  
+- 目的変数: life_exp（30歳時点の平均余命）  
+- 説明変数: gpi, sex, area  
+- weights = pop で人口を重み
+
+```{r}
+model <- lm(
+  life_exp ~ gpi + sex + area,
+  data    = data_scatter,
+  weights = pop
+)
+
+summary(model)
+```
+
+▼ Step 3: 回帰表を表示  
+- moderndive::get_regression_table()
+
+```{r}
+get_regression_table(model)
+```
+
+▼ Step 4: 回帰係数を視覚化  
+- ggstats::ggcoef_model()
+
+```{r}
+ggcoef_model(model)
+
+#-------自分用-------
+plot8 <- ggcoef_model(model)
+
+plot8
+
+ggsave(
+  filename = "Results/plot8_regression_coefficients.pdf",  # 保存ファイル名
+  plot = plot8,      # 保存するオブジェクト（ここで指定！）
+  height = 20,       # 高さ（cm）
+  width = 30,        # 幅（cm）
+  units = "cm",      # 単位をcmに設定
+  dpi = 400          # 解像度（高画質）
+)
+```
