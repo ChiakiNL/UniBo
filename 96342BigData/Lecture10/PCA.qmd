@@ -1,0 +1,420 @@
+---
+title: "PCA"
+format: html
+editor: visual
+---
+
+```{r message=FALSE, warning=FALSE, include=TRUE}
+# Load data 
+# Billbord ranking
+library(tidyverse)
+billboard <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-09-14/billboard.csv')
+# Songs features based on Spotify API
+features <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-09-14/audio_features.csv')
+
+head(features)
+```
+
+# `billboard.csv`
+
+| variable | class | description |
+|:---------------|:---------------|:----------------------------------------|
+| url | character | Billboard Chart URL |
+| week_id | character | Week ID |
+| week_position | double | Week position 1: 100 |
+| song | character | Song name |
+| performer | character | Performer name |
+| song_id | character | Song ID, combo of song/singer |
+| instance | double | Instance (this is used to separate breaks on the chart for a given song. Example, an instance of 6 tells you that this is the sixth time this song has appeared on the chart) |
+| previous_week_position | double | Previous week position |
+| peak_position | double | Peak position as of that week |
+| weeks_on_chart | double | Weeks on chart as of that week |
+
+| variable | class | description |
+|:--------------|:--------------|:-----------------------------------------|
+| song_id | character | Song ID |
+| performer | character | Performer name |
+| song | character | Song |
+| spotify_genre | character | Genre |
+| spotify_track_id | character | Track ID |
+| spotify_track_preview_url | character | Spotify URL |
+| spotify_track_duration_ms | double | Duration in ms |
+| spotify_track_explicit | logical | Is explicit |
+| spotify_track_album | character | Album name |
+| danceability | double | Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable. |
+| energy | double | Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy. |
+| key | double | The estimated overall key of the track. Integers map to pitches using standard Pitch Class notation . E.g. 0 = C, 1 = C♯/D♭, 2 = D, and so on. If no key was detected, the value is -1. |
+| loudness | double | The overall loudness of a track in decibels (dB). Loudness values are averaged across the entire track and are useful for comparing relative loudness of tracks. Loudness is the quality of a sound that is the primary psychological correlate of physical strength (amplitude). Values typical range between -60 and 0 db. |
+| mode | double | Mode indicates the modality (major or minor) of a track, the type of scale from which its melodic content is derived. Major is represented by 1 and minor is 0. |
+| speechiness | double | Speechiness detects the presence of spoken words in a track. The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the closer to 1.0 the attribute value. Values above 0.66 describe tracks that are probably made entirely of spoken words. Values between 0.33 and 0.66 describe tracks that may contain both music and speech, either in sections or layered, including such cases as rap music. Values below 0.33 most likely represent music and other non-speech-like tracks. |
+| acousticness | double | A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic. |
+| instrumentalness | double | Predicts whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0. |
+| liveness | double | Detects the presence of an audience in the recording. Higher liveness values represent an increased probability that the track was performed live. A value above 0.8 provides strong likelihood that the track is live. |
+| valence | double | A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry). |
+| tempo | double | The overall estimated tempo of a track in beats per minute (BPM). In musical terminology, tempo is the speed or pace of a given piece and derives directly from the average beat duration. |
+| time_signature | double | Time signature |
+| spotify_track_popularity | double | Popularity |
+
+## Cleaning the data
+
+In this exercise we want to select only songs that reached #1 position
+
+```{r}
+library(tidyverse)
+
+billboard_1<-billboard |> 
+  filter(peak_position==1) |>
+  group_by(song) |> 
+  slice_head() 
+
+
+
+bill_prep<-billboard_1 |>
+  # Add Year column
+  # フォーマットの部分でYearのみを示すコラムを作るようにコマンドしている
+  mutate(year=format(
+    as.Date(week_id,"%m/%d/%Y"),format="%Y")
+  ) |> 
+  # Set year as numeric
+  mutate(year=as.numeric(year))
+
+# Add year to songs' features data
+# byで変数を保存している
+features_prep<-features |> 
+  left_join(bill_prep,by="song_id") |> 
+  drop_na()
+```
+
+### Frequency Table
+
+```{r}
+frequency_table <- features_prep %>%
+  count(performer.x) %>%
+  arrange(desc(n))  
+# 'n' is the default column name for the frequency count; arrange in descending order
+
+frequency_table
+
+```
+
+### Selecting variables
+
+First, we will select the variables on interest for the PCA, plus one additional variable (year of creation of the song).
+
+```{r}
+PCA_data<-features_prep |> 
+  select(
+    # Variables of interest for PCA
+    c(danceability,energy,instrumentalness,
+      key,acousticness,mode,valence,tempo,
+      time_signature,speechiness,loudness,liveness,
+    # Add year as supplementary variable  
+      year,
+    # Add performer and songs as supplementary variable  
+    performer.x, song.x
+    )
+  ) |> 
+  # Remove rows with NA
+  drop_na()
+```
+
+```{r}
+# 未完成。プロットできる（色別に）
+features_prep |>
+  ggplot(oes(danceability, energy))+
+
+  
+```
+
+
+```{r}
+# pitch-class labels in chromatic order (0 = C … 11 = B)
+pc_labels <- c("C","C♯/D♭","D","D♯/E♭","E","F",
+               "F♯/G♭","G","G♯/A♭","A","A♯/B♭","B")
+
+PCA_data <- PCA_data %>%
+  mutate(
+    key = factor(key, levels = 0:11, labels = pc_labels)
+  )
+```
+
+
+
+### Correlation
+
+```{r}
+#install.packages("corrplot") - done
+library(corrplot)
+
+corrMatrix<-PCA_data |> 
+  select(-c(year, performer.x, song.x, key)) |> 
+  cor() 
+corrMatrix
+```
+
+```{r}
+corrplot(corrMatrix, method="color")
+
+```
+
+```{r}
+# 
+PCA <-PCA_data |> 
+  select(-c(year, performer.x, song.x, key)) |> 
+  # Perform PCA with scaled variables
+  
+  prcomp(scale = TRUE)
+
+```
+
+Now, we need the {broom} extension to access the results of prcomp() with the {tidyverse} syntax. After loading {broom}, you can use the tidy() function to access the results of the PCA such as eigenvalues.
+
+```{r}
+# broom - 回帰分析や主成分分析（PCA）などのモデル出力をきれいに整形して、データフレーム（tibble）に変換するツールです。
+library(broom)
+
+PCA |> 
+  tidy(matrix = "eigenvalues")
+
+# このデータセットから違う次元からデータをもってきてあげる（二次元から一次元へ。グラフの例（xとyが存在する次元から一本の次元へ））
+
+```
+
+```{r}
+# augment function - PCAデータをprinciple compponentにもっていく
+PCA_indiv<-PCA |> 
+  broom::augment(PCA_data)
+
+# Plot of individuals
+ggplot(
+  data=PCA_indiv,
+  aes(.fittedPC1, .fittedPC2))+
+  geom_point()+
+  labs(
+    title = 'Plot of songs',
+    x='PC1 (26%)',
+    y='PC2 (12%)'
+  )+
+  theme_minimal()
+```
+
+
+
+```{r}
+# Plot of individuals
+ggplot(
+  data=PCA_indiv,
+  aes(.fittedPC1, .fittedPC2,color=year))+
+  geom_point()+
+  labs(
+    title = 'Plot of songs',
+    subtitle = 'Color shows year of song creation',
+    x='PC1 (26%)',
+    y='PC2 (12%)',
+    color='Year'
+  )+
+  theme_minimal()
+```
+
+```{r}
+
+PCA_indiv<-PCA |> 
+  broom::augment(PCA_data)
+
+
+ggplot(PCA_indiv, aes(x = .fittedPC1, y = .fittedPC2, color = key)) +
+  geom_point() +
+  labs(
+    title = "Plot of songs",
+    x = "PC1 (26%)",
+    y = "PC2 (12%)",
+    color = "Key"
+  ) +
+  theme_minimal()
+```
+```
+
+
+# Extract songs from Coldplay, and Bob Dylan
+
+```{r}
+MC_songs<- PCA_indiv %>% 
+  filter(performer.x=="Mariah Carey")
+
+DB_songs<- PCA_indiv %>% 
+  filter(performer.x=="David Bowie")
+
+```
+
+```{r}
+
+ggplot(
+  data=PCA_indiv,
+  aes(.fittedPC1, .fittedPC2))+
+  geom_point( color="lightgrey")+
+  labs(
+    title = 'Plot of songs',
+    x='PC1 (26%)',
+    y='PC2 (12%)'  )+
+  theme_minimal() +
+    geom_point(data=MC_songs, 
+             aes(.fittedPC1, .fittedPC2), 
+             color="blue")+
+    geom_point(data=DB_songs, 
+             aes(.fittedPC1, .fittedPC2), 
+             color="red")
+```
+
+### Plot of variables
+
+Variable coordinates are stored in the "rotation" matrix. We can extract these coordinates as follows:
+
+```{r}
+year_coord<-as.data.frame(
+  # Calculate correlation of year with PCA axis
+  cor(PCA_data$year,PCA$x)
+  )%>%
+  # Add name of the variable
+  mutate(Variable="Year")
+
+year_coord
+```
+
+```{r}
+
+PCA_var<-PCA |> 
+  # Extract variable coordinates
+  tidy(matrix = "rotation") %>%
+  # Format table form long to wide
+  pivot_wider(names_from = "PC", names_prefix = "PC", values_from = "value") |> 
+  # Rename column with variable names
+  rename(Variable=column) |> 
+  # 'Clean' variable names 
+  # Upper case on first letter
+  mutate(Variable=stringr::str_to_title(Variable)) |> 
+  # Change '_' for space
+  mutate(Variable=stringr::str_replace_all(Variable,"_"," "))
+
+head(PCA_var)
+
+# 数字が高いほどcorrelationが強いことを示している
+# Tempo 数字がネガティブ -> PC1から独立していることを示す
+
+```
+
+### Plot the variables
+
+```{r}
+# Load ggrepel to avoid variable names to overlap
+library(ggrepel)
+
+var<-ggplot(data=PCA_var,aes(PC1, PC2)) +
+  # Add variables arrows
+  geom_segment(
+    xend = 0, yend = 0, 
+    arrow = arrow(
+      length = unit(0.03, "npc"),
+      ends = "first"
+    )
+  )+
+  # Add variables names
+  geom_text_repel(
+    aes(label = Variable),
+    hjust = 1,size=3,
+    min.segment.length = Inf,
+    nudge_x=0.01,nudge_y=0.01
+  ) +
+  coord_fixed()+
+  labs(
+    title = 'Plot of variables',
+    x='PC1 (22%)',
+    y='PC2 (11%)',
+    color='Year'
+  )+
+  theme_minimal()
+
+var
+```
+
+```{r}
+year_coord<-as.data.frame(
+  # Calculate correlation of year with PCA axis
+  cor(PCA_data$year,PCA$x)
+  )%>%
+  # Add name of the variable
+  mutate(Variable="Year")
+
+year_coord
+```
+
+```{r}
+var+
+  geom_segment(
+    data=year_coord,
+    color="red",
+    xend = 0, yend = 0, 
+    arrow = arrow(
+      length = unit(0.03, "npc"),
+      ends = "first"
+    )
+  )+
+  geom_text_repel(
+    data=as.data.frame(year_coord),
+    aes(label = Variable),
+    color="red",hjust = 1,size=3,
+    min.segment.length = Inf,
+    nudge_x=0.02,nudge_y=-0.02
+  )+
+  labs(
+    subtitle="Year as additional variable"
+  )
+```
+# Taylor swift data
+
+### Load data
+
+```{r}
+
+ts <- read_csv("taylor_swift_spotify_data.csv", show_col_types = FALSE)
+```
+
+
+###  Choose numeric feature columns for PCA
+```{r}
+PCA_ts <-ts |> 
+  select(Danceability,Energy,Instrumentalness,
+      Acousticness,Mode,Valence,Tempo,
+      "Time Signature",Speechiness,Loudness,Liveness) |> 
+  # Perform PCA with scaled variables
+  prcomp(scale = TRUE, center = TRUE)
+
+```
+###  PCA. results
+
+```{r}
+var_expl <- (PCA_ts$sdev^2)/sum(PCA_ts$sdev^2)
+
+PCA_ts |> 
+  tidy(matrix = "eigenvalues")
+```
+
+
+```{r}
+scores <- as_tibble(PCA_ts$x[, 1:2]) |>
+  setNames(c("PC1","PC2")) |>
+  bind_cols(ts |>
+              select(Album,"Song Name") )
+```
+
+### Plot
+
+```{r}
+ggplot(scores, aes(PC1, PC2, color = Album)) +
+  geom_point(alpha = 0.85) +
+  labs(
+    title = "Taylor Swift songs on the first two principal components",
+    color = "Album"
+  ) +
+  theme_minimal()
+```
+
